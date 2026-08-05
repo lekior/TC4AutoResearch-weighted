@@ -135,7 +135,6 @@ public final class BatchResearchController {
         int tick;
         int deadline;
         int acceptedTick = -1;
-        int resynchronizedTick = -1;
         boolean transferPending;
         String expectedNoteState = "";
 
@@ -221,7 +220,6 @@ public final class BatchResearchController {
             phase = waitingPhase;
             deadline = tick + TRANSFER_TIMEOUT_TICKS;
             acceptedTick = -1;
-            resynchronizedTick = -1;
             transferPending = true;
             expectedNoteState = ContainerTransferController.sourceNoteState();
         }
@@ -272,18 +270,12 @@ public final class BatchResearchController {
                 return false;
             }
             if (status == ContainerTransferController.Status.RESYNCHRONIZED) {
-                if (resynchronizedTick < 0) {
-                    resynchronizedTick = tick;
-                    deadline = Math.max(deadline, tick + TRANSFER_TIMEOUT_TICKS);
-                    return false;
-                }
-                if (!ContainerTransferController.hasSettled(tick, resynchronizedTick)) return false;
-                if (!ContainerTransferController.retry(mc, player)) {
+                if (!ContainerTransferController.retryReady(tick)) return false;
+                if (!ContainerTransferController.canRetry() || !ContainerTransferController.retry(mc, player)) {
                     restartAfterTransferFailure();
                     return false;
                 }
                 acceptedTick = -1;
-                resynchronizedTick = -1;
                 deadline = tick + TRANSFER_TIMEOUT_TICKS;
                 return false;
             }
@@ -315,7 +307,6 @@ public final class BatchResearchController {
             ContainerTransferController.clear();
             transferPending = false;
             acceptedTick = -1;
-            resynchronizedTick = -1;
             expectedNoteState = "";
         }
 
@@ -336,7 +327,6 @@ public final class BatchResearchController {
             phase = Phase.ADVANCE;
             deadline = 0;
             acceptedTick = -1;
-            resynchronizedTick = -1;
             transferPending = false;
             expectedNoteState = "";
         }

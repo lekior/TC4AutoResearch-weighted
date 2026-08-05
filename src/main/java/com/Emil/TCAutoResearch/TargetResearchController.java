@@ -169,7 +169,6 @@ public final class TargetResearchController {
         int tick;
         int deadline;
         int acceptedTick = -1;
-        int resynchronizedTick = -1;
         Phase recoveryPhase = Phase.ADVANCE;
         Phase pausedPhase = Phase.ADVANCE;
         boolean penMoved;
@@ -590,7 +589,6 @@ public final class TargetResearchController {
             phase = nextPhase;
             deadline = tick + TRANSFER_TIMEOUT_TICKS;
             acceptedTick = -1;
-            resynchronizedTick = -1;
             return true;
         }
 
@@ -600,7 +598,6 @@ public final class TargetResearchController {
             phase = nextPhase;
             deadline = tick + TRANSFER_TIMEOUT_TICKS;
             acceptedTick = -1;
-            resynchronizedTick = -1;
             return true;
         }
 
@@ -615,18 +612,12 @@ public final class TargetResearchController {
                 return false;
             }
             if (status == ContainerTransferController.Status.RESYNCHRONIZED) {
-                if (resynchronizedTick < 0) {
-                    resynchronizedTick = tick;
-                    deadline = Math.max(deadline, tick + TRANSFER_TIMEOUT_TICKS);
-                    return false;
-                }
-                if (!ContainerTransferController.hasSettled(tick, resynchronizedTick)) return false;
-                if (!ContainerTransferController.retry(mc, player)) {
+                if (!ContainerTransferController.retryReady(tick)) return false;
+                if (!ContainerTransferController.canRetry() || !ContainerTransferController.retry(mc, player)) {
                     scheduleTransferRecovery();
                     return false;
                 }
                 acceptedTick = -1;
-                resynchronizedTick = -1;
                 deadline = tick + TRANSFER_TIMEOUT_TICKS;
                 return false;
             }
@@ -654,7 +645,6 @@ public final class TargetResearchController {
             BatchResearchController.cancel();
             ResearchSolveController.cancel();
             acceptedTick = -1;
-            resynchronizedTick = -1;
             phase = Phase.RESTART_WAIT;
             deadline = tick + TRANSFER_RESTART_DELAY_TICKS;
         }
@@ -717,7 +707,6 @@ public final class TargetResearchController {
         private void clearTransfer() {
             ContainerTransferController.clear();
             acceptedTick = -1;
-            resynchronizedTick = -1;
             deadline = 0;
         }
 

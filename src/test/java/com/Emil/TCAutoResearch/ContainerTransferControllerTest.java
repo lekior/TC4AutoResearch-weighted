@@ -60,6 +60,22 @@ class ContainerTransferControllerTest {
     }
 
     @Test
+    void rejectedTransferUsesAdaptiveRetryBackoff() {
+        assertEquals(1, ContainerTransferController.retryDelayTicksForAttempts(1));
+        assertEquals(2, ContainerTransferController.retryDelayTicksForAttempts(2));
+        assertEquals(4, ContainerTransferController.retryDelayTicksForAttempts(3));
+        assertEquals(20, ContainerTransferController.retryDelayTicksForAttempts(7));
+
+        ContainerTransferController.beginTracking(7, (short) 18);
+        ContainerTransferController.onConfirmation(7, (short) 18, false);
+        ContainerTransferController.onWindowItems(7);
+
+        assertFalse(ContainerTransferController.retryReady(10));
+        assertTrue(ContainerTransferController.retryReady(11));
+        assertTrue(ContainerTransferController.canRetry());
+    }
+
+    @Test
     void acceptedTransfersUseOneTickMinimumWindow() {
         assertFalse(ContainerTransferController.hasSettled(10, 10));
         assertTrue(ContainerTransferController.hasSettled(11, 10));

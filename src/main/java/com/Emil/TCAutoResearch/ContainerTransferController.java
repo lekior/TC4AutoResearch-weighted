@@ -20,15 +20,19 @@ public final class ContainerTransferController {
     }
 
     static final int SETTLE_TICKS = 1;
+    static final int MAX_ATTEMPTS = 4;
+    private static final int MAX_RETRY_DELAY_TICKS = 20;
 
     private static int windowId = -1;
     private static short transactionId;
+    private static ItemStack sourceStack;
     private static String sourceNoteState = "";
     private static Status status = Status.IDLE;
     private static int containerSlot = -1;
     private static int mouseButton;
     private static int clickMode;
     private static int attempts;
+    private static int retryNotBeforeTick = -1;
     private static long serverUpdateGeneration;
     private static long transferStartGeneration;
     private static long windowSyncGeneration;
@@ -47,19 +51,11 @@ public final class ContainerTransferController {
     }
 
     public static synchronized boolean retry(Minecraft mc, EntityPlayer player) {
-        if (status != Status.RESYNCHRONIZED) return false;
+        if (!canRetry()) return false;
         int retrySlot = containerSlot;
         int retryButton = mouseButton;
         int retryMode = clickMode;
-        String expectedSource = sourceNoteState;
-        if (!expectedSource.isEmpty()) {
-            Container container = player == null ? null : player.openContainer;
-            if (container == null || retrySlot < 0 || retrySlot >= container.inventorySlots.size()) return false;
-            ResearchNoteData sourceNote = ResearchNoteItems.data(
-                container.getSlot(retrySlot)
-                    .getStack());
-            if (sourceNote == null || !expectedSource.equals(ResearchNoteFingerprint.state(sourceNote))) return false;
-        }
+        if (!sourceStateMatches(player, retrySlot)) return false;
         return beginClick(mc, player, retrySlot, retryButton, retryMode, true);
     }
 
@@ -71,12 +67,13 @@ public final class ContainerTransferController {
         Slot slot = container.getSlot(containerSlot);
         if (slot == null || !slot.getHasStack()) return false;
 
-        ResearchNoteData sourceNote = ResearchNoteItems.data(slot.getStack());
+        ItemStack sourceStack = slot.getStack();
+        ResearchNoteData sourceNote = ResearchNoteItems.data(sourceStack);
         String sourceState = sourceNote == null ? "" : ResearchNoteFingerprint.state(sourceNote);
         int transferWindowId = container.windowId;
         short transferTransactionId = container.getNextTransactionID(player.inventory);
         ItemStack result = container.slotClick(containerSlot, mouseButton, mode, player);
-        beginTracking(transferWindowId, transferTransactionId, sourceState);
+        beginTracking(transferWindowId, transferTransactionId, sourceState, sourceStack.copy());
         ContainerTransferController.containerSlot = containerSlot;
         ContainerTransferController.mouseButton = mouseButton;
         clickMode = mode;
@@ -99,6 +96,31 @@ public final class ContainerTransferController {
 
     public static synchronized String sourceNoteState() {
         return sourceNoteState;
+    }
+
+    public static synchronized boolean canRetry() {
+        return status == Status.RESYNCHRONIZED && attempts < MAX_ATTEMPTS;
+    }
+
+    /**
+     * Returns true after the current retry backoff and one client settle tick have elapsed.
+     * The gate is created when the caller first observes a full server resynchronization.
+     */
+    public static synchronized boolean retryReady(int currentTick) {
+        if (status != Status.RESYNCHRONIZED) return false;
+        if (retryNotBeforeTick < 0) retryNotBeforeTick = currentTick + retryDelayTicks();
+        return currentTick >= retryNotBeforeTick;
+    }
+
+    static synchronized boolean sourceStateMatches(EntityPlayer player, int slotIndex) {
+        Container container = player == null ? null : player.openContainer;
+        if (container == null || slotIndex < 0 || slotIndex >= container.inventorySlots.size()) return false;
+        ItemStack currentStack = container.getSlot(slotIndex)
+            .getStack();
+        if (!sameStack(sourceStack, currentStack)) return false;
+        if (sourceNoteState.isEmpty()) return true;
+        ResearchNoteData sourceNote = ResearchNoteItems.data(currentStack);
+        return sourceNote != null && sourceNoteState.equals(ResearchNoteFingerprint.state(sourceNote));
     }
 
     public static synchronized boolean matchesOpenContainer(EntityPlayer player) {
@@ -133,7 +155,10 @@ public final class ContainerTransferController {
         if (status != Status.WAITING || windowId != confirmedWindowId || transactionId != confirmedTransactionId)
             return;
         status = accepted ? Status.ACCEPTED : Status.REJECTED;
-        if (!accepted && windowSyncGeneration > transferStartWindowSyncGeneration) status = Status.RESYNCHRONIZED;
+        if (!accepted && windowSyncGeneration > transferStartWindowSyncGeneration) {
+            status = Status.RESYNCHRONIZED;
+            retryNotBeforeTick = -1;
+        }
     }
 
     public static synchronized void onSetSlot(int synchronizedWindowId) {
@@ -144,7 +169,10 @@ public final class ContainerTransferController {
         if (!isTrackedWindow(synchronizedWindowId)) return;
         serverUpdateGeneration++;
         windowSyncGeneration++;
-        if (status == Status.REJECTED) status = Status.RESYNCHRONIZED;
+        if (status == Status.REJECTED) {
+            status = Status.RESYNCHRONIZED;
+            retryNotBeforeTick = -1;
+        }
     }
 
     static boolean hasSettled(int currentTick, int eventTick) {
@@ -154,28 +182,48 @@ public final class ContainerTransferController {
     public static synchronized void clear() {
         windowId = -1;
         transactionId = 0;
+        sourceStack = null;
         sourceNoteState = "";
         status = Status.IDLE;
         containerSlot = -1;
         mouseButton = 0;
         clickMode = 0;
         attempts = 0;
+        retryNotBeforeTick = -1;
         stablePostStateTicks = 0;
     }
 
     static synchronized void beginTracking(int trackedWindowId, short trackedTransactionId) {
-        beginTracking(trackedWindowId, trackedTransactionId, "");
+        beginTracking(trackedWindowId, trackedTransactionId, "", null);
     }
 
     private static synchronized void beginTracking(int trackedWindowId, short trackedTransactionId,
-        String trackedSourceNoteState) {
+        String trackedSourceNoteState, ItemStack trackedSourceStack) {
         windowId = trackedWindowId;
         transactionId = trackedTransactionId;
+        sourceStack = trackedSourceStack;
         sourceNoteState = trackedSourceNoteState;
         transferStartGeneration = serverUpdateGeneration;
         transferStartWindowSyncGeneration = windowSyncGeneration;
+        retryNotBeforeTick = -1;
         stablePostStateTicks = 0;
         status = Status.WAITING;
+    }
+
+    private static int retryDelayTicks() {
+        return retryDelayTicksForAttempts(attempts);
+    }
+
+    static int retryDelayTicksForAttempts(int attemptCount) {
+        int retryNumber = Math.max(0, attemptCount - 1);
+        int shift = Math.min(5, retryNumber);
+        return Math.max(SETTLE_TICKS, Math.min(MAX_RETRY_DELAY_TICKS, 1 << shift));
+    }
+
+    private static boolean sameStack(ItemStack expected, ItemStack actual) {
+        return expected == null ? actual == null
+            : actual != null && expected.stackSize == actual.stackSize
+                && ItemStack.areItemStacksEqual(expected, actual);
     }
 
     private static boolean isTrackedWindow(int synchronizedWindowId) {

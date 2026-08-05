@@ -10,27 +10,17 @@ import thaumcraft.common.tiles.TileResearchTable;
 
 public class GuiHandler implements IGuiHandler {
 
-    private final IGuiHandler guiHandler;
-
-    public GuiHandler(IGuiHandler guiHandler) {
-        this.guiHandler = guiHandler;
-    }
-
     @Override
     public Object getServerGuiElement(int ID, EntityPlayer player, World world, int x, int y, int z) {
-        if (true) {
-            if (ID == 0)
-                return new ContainerResearchTable(player.inventory, (TileResearchTable) world.getTileEntity(x, y, z));
-
-            return null;
-        } else return guiHandler.getServerGuiElement(ID, player, world, x, y, z);
+        if (ID != 0) return null;
+        TileResearchTable table = (TileResearchTable) world.getTileEntity(x, y, z);
+        return table == null ? null : new ContainerResearchTable(player.inventory, table);
     }
 
     @Override
     public Object getClientGuiElement(int ID, EntityPlayer player, World world, int x, int y, int z) {
-        if (true) {
-            if (ID == 0) return new GuiResearchTable(player, (TileResearchTable) world.getTileEntity(x, y, z));
-            return null;
-        } else return guiHandler.getClientGuiElement(ID, player, world, x, y, z);
+        if (ID != 0) return null;
+        TileResearchTable table = (TileResearchTable) world.getTileEntity(x, y, z);
+        return table == null ? null : new GuiResearchTable(player, table);
     }
 }

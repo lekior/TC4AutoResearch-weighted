@@ -5,10 +5,11 @@
   "refmap": "mixins.TCAutoResearchByEmil.refmap.json",
   "target": "@env(DEFAULT)",
   "compatibilityLevel": "JAVA_8",
-  "mixins": [
-    "GuiResearchTableMixin"
-  ],
+  "mixins": [],
   "client": [
+    "GuiResearchBrowserMixin",
+    "GuiResearchTableMixin",
+    "NetHandlerPlayClientMixin"
   ],
   "server": []
 }

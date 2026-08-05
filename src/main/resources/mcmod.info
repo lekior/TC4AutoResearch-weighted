@@ -3,8 +3,8 @@
 	"modList": [{
 		"modid": "${modId}",
 		"name": "${modName}",
-		"description": "",
-		"version": "0.01",
+		"description": "Deterministic normal and weighted Thaumcraft research solver with in-game aspect cost editing.",
+		"version": "1.1.0-weighted",
 		"mcversion": "${minecraftVersion}",
 		"url": "",
 		"updateUrl": "",

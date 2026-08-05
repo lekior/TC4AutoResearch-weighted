@@ -1,4 +1,9 @@
 package com.Emil.TCAutoResearch.proxy;
 
-public abstract class ServerProxy implements IProxy {
+import cpw.mods.fml.common.event.FMLPreInitializationEvent;
+
+public final class ServerProxy implements IProxy {
+
+    @Override
+    public void preInit(FMLPreInitializationEvent event) {}
 }

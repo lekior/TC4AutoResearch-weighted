@@ -66,8 +66,17 @@ class ContainerTransferControllerTest {
     }
 
     @Test
-    void postTransferStateMustBeStableForTwoTicks() {
+    void acceptedConfirmationIsAuthoritativeWithoutAnInventoryPacket() {
         ContainerTransferController.beginTracking(7, (short) 15);
+
+        ContainerTransferController.onConfirmation(7, (short) 15, true);
+
+        assertTrue(ContainerTransferController.hasServerStateUpdate());
+    }
+
+    @Test
+    void postTransferStateMustBeStableForTwoTicks() {
+        ContainerTransferController.beginTracking(7, (short) 16);
 
         assertFalse(ContainerTransferController.observePostState(true));
         assertTrue(ContainerTransferController.observePostState(true));

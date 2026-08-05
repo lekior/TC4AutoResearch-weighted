@@ -107,11 +107,14 @@ public final class ContainerTransferController {
     }
 
     /**
-     * Returns true only after the server has sent a slot/window update for this transfer.
-     * The local slotClick prediction is deliberately not treated as synchronization.
+     * Returns true once the server has authoritatively settled this transfer.
+     *
+     * An accepted ConfirmTransaction is itself the server acknowledgement. Some servers
+     * do not follow an accepted click with SetSlot or WindowItems, so those packets are
+     * only required when recovering from a rejected click.
      */
     public static synchronized boolean hasServerStateUpdate() {
-        return status != Status.IDLE && serverUpdateGeneration > transferStartGeneration;
+        return status == Status.ACCEPTED || (status != Status.IDLE && serverUpdateGeneration > transferStartGeneration);
     }
 
     /**

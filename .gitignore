@@ -3,4 +3,7 @@ build/
 run/
 bin/
 logs/
-AutoResearch.dll
+.idea/
+*.iml
+*.user
+*.pubxml.user

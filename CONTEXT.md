@@ -39,10 +39,12 @@ mutation still waits for original server confirmation.
 ## Research note transfer
 
 A research note transfer is a shift-click between the research-table note slot and the player's 36-slot inventory.
-The optimistic client slot mutation is not confirmation. A transfer is confirmed only when the server accepts the
-matching window and transaction IDs, a five-tick settling window has elapsed, and the expected note-slot state is
-visible. On rejection, the controller waits for the server's full window resynchronization, settles, and retries once.
-A second rejection or timeout stops batch research; it never advances the queue from an optimistic client slot state.
+The optimistic client slot mutation is not confirmation. A transfer proceeds only after the server accepts the matching
+window and transaction IDs, one client settle tick has elapsed, and the expected post-transfer state remains stable.
+On rejection, the controller waits for the server's full window resynchronization, verifies the source ItemStack and
+research-note fingerprint, then uses 1/2/4/8 tick adaptive backoff. Each transfer has at most four sends, including the
+initial click. A rejected, timed-out, or idempotency-mismatched transfer re-enters recovery and rechecks live state; it
+never advances the queue from an optimistic client slot state.
 
 ## Board geometry
 

@@ -135,6 +135,7 @@ tcautores.batch_complete=Batch research and solve complete: %d/%d
 tcautores.batch_stopped=Batch research and solve stopped: %d/%d; %s
 tcautores.batch_inventory_full=The inventory is full; the note cannot leave the research table
 tcautores.batch_transfer_timeout=The server did not confirm the research note transfer
+tcautores.batch_transfer_state_timeout=The server inventory state did not synchronize in time
 tcautores.batch_transfer_rejected=The server rejected the research note transfer; inventory resynchronization is pending
 tcautores.batch_transfer_failed=The research note transfer could not be started
 tcautores.batch_container_changed=The research table container changed during transfer

@@ -135,6 +135,7 @@ tcautores.batch_complete=批量研究并解锁完成：%d/%d
 tcautores.batch_stopped=批量研究并解锁已停止：%d/%d；%s
 tcautores.batch_inventory_full=物品栏已满，无法从研究台移出笔记
 tcautores.batch_transfer_timeout=服务端未确认研究笔记的库存转移
+tcautores.batch_transfer_state_timeout=服务端库存状态同步超时
 tcautores.batch_transfer_rejected=服务端拒绝了研究笔记转移，已等待库存重新同步
 tcautores.batch_transfer_failed=无法开始研究笔记转移
 tcautores.batch_container_changed=研究台容器在转移期间发生变化

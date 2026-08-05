@@ -193,12 +193,12 @@ public final class BatchResearchController {
 
         private void waitForEmptyTable() {
             if (!transferConfirmed()) return;
-            if (helper.researchNoteStack() == null) {
+            if (ContainerTransferController.observePostState(helper.researchNoteStack() == null)) {
                 clearTransfer();
                 phase = Phase.ADVANCE;
                 return;
             }
-            if (tick >= deadline) fail("tcautores.batch_inventory_full");
+            if (tick >= deadline) fail("tcautores.batch_transfer_state_timeout");
         }
 
         private void waitForLoadedNote() {
@@ -207,6 +207,7 @@ public final class BatchResearchController {
             ResearchNoteData stackData = ResearchNoteItems.data(stack);
             ResearchNoteData guiData = gui.note;
             if (stackData == null || !expectedNoteState.equals(ResearchNoteFingerprint.state(stackData))) {
+                ContainerTransferController.observePostState(false);
                 if (tick >= deadline) fail("tcautores.note_changed");
                 return;
             }
@@ -216,7 +217,7 @@ public final class BatchResearchController {
                 && !guiData.complete
                 && ResearchNoteFingerprint.state(stackData)
                     .equals(ResearchNoteFingerprint.state(guiData));
-            if (synchronizedNote) {
+            if (ContainerTransferController.observePostState(synchronizedNote)) {
                 clearTransfer();
                 startSolve();
                 return;
@@ -252,6 +253,10 @@ public final class BatchResearchController {
                 return false;
             }
             if (status == ContainerTransferController.Status.ACCEPTED) {
+                if (!ContainerTransferController.hasServerStateUpdate()) {
+                    if (tick >= deadline) fail("tcautores.batch_transfer_state_timeout");
+                    return false;
+                }
                 if (acceptedTick < 0) {
                     acceptedTick = tick;
                     deadline = Math.max(deadline, tick + TRANSFER_TIMEOUT_TICKS);

@@ -351,8 +351,9 @@ public final class TargetResearchController {
 
         private void tickPenOut() {
             if (!transferAccepted()) return;
-            if (helper.scribingToolsStack() != null || !ResearchManager.consumeInkFromPlayer(player, false)) {
-                if (tick >= deadline) fail("tcautores.batch_inventory_full");
+            boolean ready = helper.scribingToolsStack() == null && ResearchManager.consumeInkFromPlayer(player, false);
+            if (!ContainerTransferController.observePostState(ready)) {
+                if (tick >= deadline) fail("tcautores.batch_transfer_state_timeout");
                 return;
             }
             clearTransfer();
@@ -390,8 +391,8 @@ public final class TargetResearchController {
 
         private void tickPenBack() {
             if (!transferAccepted()) return;
-            if (!helper.hasInk()) {
-                if (tick >= deadline) fail("tcautores.batch_transfer_failed");
+            if (!ContainerTransferController.observePostState(helper.hasInk())) {
+                if (tick >= deadline) fail("tcautores.batch_transfer_state_timeout");
                 return;
             }
             clearTransfer();
@@ -448,8 +449,8 @@ public final class TargetResearchController {
 
         private void tickDiscoveryOut() {
             if (!transferAccepted()) return;
-            if (helper.researchNoteStack() != null) {
-                if (tick >= deadline) fail("tcautores.batch_inventory_full");
+            if (!ContainerTransferController.observePostState(helper.researchNoteStack() == null)) {
+                if (tick >= deadline) fail("tcautores.batch_transfer_state_timeout");
                 return;
             }
             clearTransfer();
@@ -486,8 +487,9 @@ public final class TargetResearchController {
         private void tickSwapIn() {
             if (!transferAccepted()) return;
             ItemStack held = player.getHeldItem();
-            if (!ResearchNoteItems.isComplete(held) || !ResearchNoteItems.hasKey(held, current.key)) {
-                if (tick >= deadline) fail("tcautores.target_use_failed");
+            boolean ready = ResearchNoteItems.isComplete(held) && ResearchNoteItems.hasKey(held, current.key);
+            if (!ContainerTransferController.observePostState(ready)) {
+                if (tick >= deadline) fail("tcautores.batch_transfer_state_timeout");
                 return;
             }
             clearTransfer();
@@ -538,8 +540,9 @@ public final class TargetResearchController {
 
         private void tickSwapBack() {
             if (!transferAccepted()) return;
-            if (!ItemStack.areItemStacksEqual(originalHeld, player.getHeldItem())) {
-                if (tick >= deadline) fail("tcautores.target_held_changed");
+            if (!ContainerTransferController
+                .observePostState(ItemStack.areItemStacksEqual(originalHeld, player.getHeldItem()))) {
+                if (tick >= deadline) fail("tcautores.batch_transfer_state_timeout");
                 return;
             }
             clearTransfer();
@@ -591,6 +594,10 @@ public final class TargetResearchController {
                 return false;
             }
             if (status == ContainerTransferController.Status.ACCEPTED) {
+                if (!ContainerTransferController.hasServerStateUpdate()) {
+                    if (tick >= deadline) fail("tcautores.batch_transfer_state_timeout");
+                    return false;
+                }
                 if (acceptedTick < 0) {
                     acceptedTick = tick;
                     deadline = Math.max(deadline, tick + TRANSFER_TIMEOUT_TICKS);

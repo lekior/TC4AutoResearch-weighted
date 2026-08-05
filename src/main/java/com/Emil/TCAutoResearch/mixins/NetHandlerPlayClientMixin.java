@@ -1,6 +1,7 @@
 package com.Emil.TCAutoResearch.mixins;
 
 import net.minecraft.client.network.NetHandlerPlayClient;
+import net.minecraft.network.play.server.S2FPacketSetSlot;
 import net.minecraft.network.play.server.S30PacketWindowItems;
 import net.minecraft.network.play.server.S32PacketConfirmTransaction;
 
@@ -23,5 +24,10 @@ public abstract class NetHandlerPlayClientMixin {
     @Inject(method = "handleWindowItems", at = @At("TAIL"))
     private void tcAutoResearch$confirmInventoryResynchronization(S30PacketWindowItems packet, CallbackInfo ci) {
         ContainerTransferController.onWindowItems(packet.func_148911_c());
+    }
+
+    @Inject(method = "handleSetSlot", at = @At("TAIL"))
+    private void tcAutoResearch$trackServerSlotUpdate(S2FPacketSetSlot packet, CallbackInfo ci) {
+        ContainerTransferController.onSetSlot(packet.func_149175_c());
     }
 }

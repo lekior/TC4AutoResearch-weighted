@@ -50,8 +50,37 @@ class ContainerTransferControllerTest {
     }
 
     @Test
-    void acceptedTransfersUseAFiveTickStabilityWindow() {
-        assertFalse(ContainerTransferController.hasSettled(14, 10));
-        assertTrue(ContainerTransferController.hasSettled(15, 10));
+    void acceptedTransfersUseOneTickMinimumWindow() {
+        assertFalse(ContainerTransferController.hasSettled(10, 10));
+        assertTrue(ContainerTransferController.hasSettled(11, 10));
+    }
+
+    @Test
+    void localPredictionIsNotServerSynchronization() {
+        ContainerTransferController.beginTracking(7, (short) 14);
+
+        assertFalse(ContainerTransferController.hasServerStateUpdate());
+
+        ContainerTransferController.onSetSlot(7);
+        assertTrue(ContainerTransferController.hasServerStateUpdate());
+    }
+
+    @Test
+    void postTransferStateMustBeStableForTwoTicks() {
+        ContainerTransferController.beginTracking(7, (short) 15);
+
+        assertFalse(ContainerTransferController.observePostState(true));
+        assertTrue(ContainerTransferController.observePostState(true));
+        assertFalse(ContainerTransferController.observePostState(false));
+    }
+
+    @Test
+    void handlesWindowResynchronizationBeforeRejectionConfirmation() {
+        ContainerTransferController.beginTracking(7, (short) 16);
+
+        ContainerTransferController.onWindowItems(7);
+        ContainerTransferController.onConfirmation(7, (short) 16, false);
+
+        assertEquals(ContainerTransferController.Status.RESYNCHRONIZED, ContainerTransferController.status());
     }
 }

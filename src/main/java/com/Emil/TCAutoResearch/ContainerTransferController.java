@@ -30,6 +30,11 @@ public final class ContainerTransferController {
     private static int mouseButton;
     private static int clickMode;
     private static int attempts;
+    private static long serverUpdateGeneration;
+    private static long transferStartGeneration;
+    private static long windowSyncGeneration;
+    private static long transferStartWindowSyncGeneration;
+    private static int stablePostStateTicks;
 
     private ContainerTransferController() {}
 
@@ -101,15 +106,43 @@ public final class ContainerTransferController {
         return player != null && player.openContainer != null && windowId == player.openContainer.windowId;
     }
 
+    /**
+     * Returns true only after the server has sent a slot/window update for this transfer.
+     * The local slotClick prediction is deliberately not treated as synchronization.
+     */
+    public static synchronized boolean hasServerStateUpdate() {
+        return status != Status.IDLE && serverUpdateGeneration > transferStartGeneration;
+    }
+
+    /**
+     * Requires the observed post-transfer state to remain stable for two client ticks.
+     */
+    public static synchronized boolean observePostState(boolean ready) {
+        if (!ready) {
+            stablePostStateTicks = 0;
+            return false;
+        }
+        stablePostStateTicks++;
+        return stablePostStateTicks >= 2;
+    }
+
     public static synchronized void onConfirmation(int confirmedWindowId, short confirmedTransactionId,
         boolean accepted) {
         if (status != Status.WAITING || windowId != confirmedWindowId || transactionId != confirmedTransactionId)
             return;
         status = accepted ? Status.ACCEPTED : Status.REJECTED;
+        if (!accepted && windowSyncGeneration > transferStartWindowSyncGeneration) status = Status.RESYNCHRONIZED;
+    }
+
+    public static synchronized void onSetSlot(int synchronizedWindowId) {
+        if (isTrackedWindow(synchronizedWindowId)) serverUpdateGeneration++;
     }
 
     public static synchronized void onWindowItems(int synchronizedWindowId) {
-        if (status == Status.REJECTED && windowId == synchronizedWindowId) status = Status.RESYNCHRONIZED;
+        if (!isTrackedWindow(synchronizedWindowId)) return;
+        serverUpdateGeneration++;
+        windowSyncGeneration++;
+        if (status == Status.REJECTED) status = Status.RESYNCHRONIZED;
     }
 
     static boolean hasSettled(int currentTick, int eventTick) {
@@ -125,6 +158,7 @@ public final class ContainerTransferController {
         mouseButton = 0;
         clickMode = 0;
         attempts = 0;
+        stablePostStateTicks = 0;
     }
 
     static synchronized void beginTracking(int trackedWindowId, short trackedTransactionId) {
@@ -136,6 +170,13 @@ public final class ContainerTransferController {
         windowId = trackedWindowId;
         transactionId = trackedTransactionId;
         sourceNoteState = trackedSourceNoteState;
+        transferStartGeneration = serverUpdateGeneration;
+        transferStartWindowSyncGeneration = windowSyncGeneration;
+        stablePostStateTicks = 0;
         status = Status.WAITING;
+    }
+
+    private static boolean isTrackedWindow(int synchronizedWindowId) {
+        return windowId >= 0 && (windowId == synchronizedWindowId || synchronizedWindowId == 0);
     }
 }

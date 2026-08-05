@@ -13,6 +13,7 @@ import thaumcraft.common.lib.research.ResearchNoteData;
 public final class BatchResearchController {
 
     private static final int TRANSFER_TIMEOUT_TICKS = 60;
+    private static final int TRANSFER_RESTART_DELAY_TICKS = 20;
 
     private static BatchState active;
 
@@ -100,19 +101,31 @@ public final class BatchResearchController {
         if (current != null) current.tick();
     }
 
+    public static void attach(GuiResearchTableHelperInterface helper, EntityPlayer player, Minecraft mc) {
+        BatchState current = active;
+        if (current != null && current.player == player) current.attach(helper, mc);
+    }
+
+    public static void onResearchTableClosed(GuiResearchTableHelperInterface helper) {
+        BatchState current = active;
+        if (current != null && current.helper == helper) current.detach();
+    }
+
     private enum Phase {
+        WAIT_GUI,
         ADVANCE,
         WAIT_TABLE_EMPTY,
         WAIT_NOTE_LOADED,
-        SOLVING
+        SOLVING,
+        RESTART_WAIT
     }
 
     private static final class BatchState implements ResearchSolveController.SolveListener {
 
-        final GuiResearchTableHelperInterface helper;
         final EntityPlayer player;
-        final Minecraft mc;
-        final GuiResearchTable gui;
+        Minecraft mc;
+        GuiResearchTableHelperInterface helper;
+        GuiResearchTable gui;
         final int total;
         final String researchKey;
         final Listener listener;
@@ -138,11 +151,33 @@ public final class BatchResearchController {
             this.notifySummary = notifySummary;
         }
 
+        void attach(GuiResearchTableHelperInterface newHelper, Minecraft newMinecraft) {
+            helper = newHelper;
+            gui = (GuiResearchTable) newHelper;
+            mc = newMinecraft;
+            if (phase == Phase.WAIT_GUI) phase = Phase.ADVANCE;
+        }
+
+        void detach() {
+            clearTransfer();
+            ResearchSolveController.cancel();
+            helper = null;
+            gui = null;
+            phase = Phase.WAIT_GUI;
+        }
+
         void tick() {
             if (active != this) return;
             tick++;
+            if (phase == Phase.WAIT_GUI || helper == null || gui == null) return;
+            if (phase == Phase.RESTART_WAIT) {
+                if (mc.currentScreen != gui || tick < deadline) return;
+                phase = Phase.ADVANCE;
+                deadline = 0;
+                return;
+            }
             if (mc.currentScreen != gui) {
-                fail("tcautores.batch_gui_closed");
+                detach();
                 return;
             }
             if (phase == Phase.ADVANCE) advance();
@@ -233,7 +268,7 @@ public final class BatchResearchController {
             }
             ContainerTransferController.Status status = ContainerTransferController.status();
             if (status == ContainerTransferController.Status.REJECTED) {
-                if (tick >= deadline) fail("tcautores.batch_transfer_rejected");
+                if (tick >= deadline) restartAfterTransferFailure();
                 return false;
             }
             if (status == ContainerTransferController.Status.RESYNCHRONIZED) {
@@ -244,7 +279,7 @@ public final class BatchResearchController {
                 }
                 if (!ContainerTransferController.hasSettled(tick, resynchronizedTick)) return false;
                 if (!ContainerTransferController.retry(mc, player)) {
-                    fail("tcautores.batch_transfer_rejected");
+                    restartAfterTransferFailure();
                     return false;
                 }
                 acceptedTick = -1;
@@ -264,8 +299,16 @@ public final class BatchResearchController {
                 }
                 return ContainerTransferController.hasSettled(tick, acceptedTick);
             }
-            if (tick >= deadline) fail("tcautores.batch_transfer_timeout");
+            if (tick >= deadline) restartAfterTransferFailure();
             return false;
+        }
+
+        private void restartAfterTransferFailure() {
+            if (phase == Phase.RESTART_WAIT) return;
+            clearTransfer();
+            ResearchSolveController.cancel();
+            phase = Phase.RESTART_WAIT;
+            deadline = tick + TRANSFER_RESTART_DELAY_TICKS;
         }
 
         private void clearTransfer() {
@@ -317,6 +360,10 @@ public final class BatchResearchController {
 
         private void fail(String key) {
             if (active != this) return;
+            if (isRecoverableTransferFailure(key)) {
+                restartAfterTransferFailure();
+                return;
+            }
             active = null;
             ContainerTransferController.clear();
             ResearchSolveController.cancel();
@@ -328,6 +375,13 @@ public final class BatchResearchController {
                 player.addChatMessage(new ChatComponentText(message));
             }
             listener.onFailure(key, completed);
+        }
+
+        private static boolean isRecoverableTransferFailure(String key) {
+            return "tcautores.batch_transfer_failed".equals(key) || "tcautores.batch_transfer_rejected".equals(key)
+                || "tcautores.batch_transfer_timeout".equals(key)
+                || "tcautores.batch_transfer_state_timeout".equals(key)
+                || "tcautores.batch_container_changed".equals(key);
         }
     }
 }

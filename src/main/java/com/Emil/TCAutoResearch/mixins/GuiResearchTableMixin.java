@@ -174,6 +174,7 @@ public abstract class GuiResearchTableMixin extends GuiContainer implements GuiR
         this.buttonList.add(this.tcAutoResearch$confirmButton);
         ClientResearchTickHandler.watch(player, this.mc, this);
         TargetResearchController.attach(this, player, this.mc);
+        BatchResearchController.attach(this, player, this.mc);
     }
 
     @Override
@@ -245,7 +246,7 @@ public abstract class GuiResearchTableMixin extends GuiContainer implements GuiR
     public void onGuiClosed() {
         ClientResearchTickHandler.stopWatching();
         TargetResearchController.onResearchTableClosed(this);
-        BatchResearchController.cancel();
+        BatchResearchController.onResearchTableClosed(this);
         AspectSynthesisController.cancel();
         if (ResearchSolveController.onResearchGuiClosed()) super.onGuiClosed();
     }

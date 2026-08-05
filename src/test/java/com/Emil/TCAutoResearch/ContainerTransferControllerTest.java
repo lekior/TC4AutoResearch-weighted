@@ -50,6 +50,16 @@ class ContainerTransferControllerTest {
     }
 
     @Test
+    void ignoresPlayerInventoryWindowForContainerResynchronization() {
+        ContainerTransferController.beginTracking(7, (short) 17);
+        ContainerTransferController.onConfirmation(7, (short) 17, false);
+
+        ContainerTransferController.onWindowItems(0);
+
+        assertEquals(ContainerTransferController.Status.REJECTED, ContainerTransferController.status());
+    }
+
+    @Test
     void acceptedTransfersUseOneTickMinimumWindow() {
         assertFalse(ContainerTransferController.hasSettled(10, 10));
         assertTrue(ContainerTransferController.hasSettled(11, 10));

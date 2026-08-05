@@ -20,7 +20,6 @@ public final class ContainerTransferController {
     }
 
     static final int SETTLE_TICKS = 1;
-    private static final int MAX_ATTEMPTS = 2;
 
     private static int windowId = -1;
     private static short transactionId;
@@ -48,7 +47,7 @@ public final class ContainerTransferController {
     }
 
     public static synchronized boolean retry(Minecraft mc, EntityPlayer player) {
-        if (status != Status.RESYNCHRONIZED || attempts >= MAX_ATTEMPTS) return false;
+        if (status != Status.RESYNCHRONIZED) return false;
         int retrySlot = containerSlot;
         int retryButton = mouseButton;
         int retryMode = clickMode;
@@ -138,7 +137,7 @@ public final class ContainerTransferController {
     }
 
     public static synchronized void onSetSlot(int synchronizedWindowId) {
-        if (isTrackedWindow(synchronizedWindowId)) serverUpdateGeneration++;
+        if (isTrackedSlotUpdate(synchronizedWindowId)) serverUpdateGeneration++;
     }
 
     public static synchronized void onWindowItems(int synchronizedWindowId) {
@@ -180,6 +179,10 @@ public final class ContainerTransferController {
     }
 
     private static boolean isTrackedWindow(int synchronizedWindowId) {
-        return windowId >= 0 && (windowId == synchronizedWindowId || synchronizedWindowId == 0);
+        return windowId >= 0 && windowId == synchronizedWindowId;
+    }
+
+    private static boolean isTrackedSlotUpdate(int synchronizedWindowId) {
+        return isTrackedWindow(synchronizedWindowId) || synchronizedWindowId == 0;
     }
 }

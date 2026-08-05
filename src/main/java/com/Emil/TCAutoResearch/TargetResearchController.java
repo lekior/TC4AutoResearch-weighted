@@ -23,6 +23,7 @@ import thaumcraft.common.lib.research.ResearchManager;
 public final class TargetResearchController {
 
     private static final int TRANSFER_TIMEOUT_TICKS = 60;
+    private static final int TRANSFER_RESTART_DELAY_TICKS = 20;
 
     private static Task active;
 
@@ -146,7 +147,8 @@ public final class TargetResearchController {
         MOVE_DISCOVERY_OUT,
         SWAP_DISCOVERY_IN,
         WAIT_USE,
-        SWAP_HELD_BACK
+        SWAP_HELD_BACK,
+        RESTART_WAIT
     }
 
     private static final class Task {
@@ -168,6 +170,8 @@ public final class TargetResearchController {
         int deadline;
         int acceptedTick = -1;
         int resynchronizedTick = -1;
+        Phase recoveryPhase = Phase.ADVANCE;
+        Phase pausedPhase = Phase.ADVANCE;
         boolean penMoved;
         int discoverySlot = -1;
         ItemStack originalHeld;
@@ -189,17 +193,42 @@ public final class TargetResearchController {
             helper = newHelper;
             gui = (GuiResearchTable) newHelper;
             mc = newMinecraft;
-            if (phase == Phase.WAIT_GUI) phase = Phase.ADVANCE;
+            if (phase == Phase.WAIT_GUI) {
+                Phase resumePhase = pausedPhase;
+                pausedPhase = Phase.ADVANCE;
+                if (resumePhase == Phase.WAIT_USE) {
+                    phase = Phase.WAIT_USE;
+                    deadline = tick + 100;
+                } else if (resumePhase == Phase.RESTART_WAIT) {
+                    phase = Phase.RESTART_WAIT;
+                    deadline = tick;
+                } else if (isTransferPhase(resumePhase)) {
+                    recoveryPhase = resumePhase;
+                    phase = Phase.RESTART_WAIT;
+                    deadline = tick;
+                } else {
+                    phase = Phase.ADVANCE;
+                }
+            }
         }
 
         void detach() {
-            if (phase != Phase.WAIT_GUI) {
-                fail("tcautores.batch_gui_closed");
-                return;
-            }
+            if (phase != Phase.WAIT_GUI) pausedPhase = phase;
+            if (helper != null) BatchResearchController.onResearchTableClosed(helper);
+            ResearchNoteGenerationController.cancel();
+            ResearchSolveController.cancel();
+            ContainerTransferController.clear();
             helper = null;
             gui = null;
             phase = Phase.WAIT_GUI;
+        }
+
+        private static boolean isTransferPhase(Phase candidate) {
+            return candidate == Phase.MOVE_PEN_OUT || candidate == Phase.MOVE_PEN_BACK
+                || candidate == Phase.MOVE_DISCOVERY_OUT
+                || candidate == Phase.SWAP_DISCOVERY_IN
+                || candidate == Phase.SWAP_HELD_BACK
+                || candidate == Phase.RESTART_WAIT;
         }
 
         void tick() {
@@ -209,6 +238,13 @@ public final class TargetResearchController {
                 return;
             }
             tick++;
+
+            if (phase == Phase.WAIT_GUI || helper == null || gui == null) return;
+            if (phase == Phase.RESTART_WAIT) {
+                if (mc.currentScreen != gui || tick < deadline) return;
+                resumeAfterTransferFailure();
+                return;
+            }
 
             if (phase == Phase.WAIT_USE) {
                 tickWaitUse();
@@ -221,8 +257,8 @@ public final class TargetResearchController {
             }
 
             if (phase == Phase.WAIT_GUI || phase == Phase.GENERATING || phase == Phase.SOLVING) return;
-            if (gui == null || mc.currentScreen != gui) {
-                phase = Phase.WAIT_GUI;
+            if (mc.currentScreen != gui) {
+                detach();
                 return;
             }
             if (phase == Phase.ADVANCE) advance();
@@ -473,15 +509,10 @@ public final class TargetResearchController {
                 : player.getHeldItem()
                     .copy();
             discoverySlot = slot;
-            ContainerTransferController.clear();
-            if (!ContainerTransferController.beginSwap(mc, player, slot, player.inventory.currentItem)) {
+            if (!beginSwapTransfer(slot, Phase.SWAP_DISCOVERY_IN)) {
                 fail("tcautores.target_use_failed");
                 return;
             }
-            phase = Phase.SWAP_DISCOVERY_IN;
-            deadline = tick + TRANSFER_TIMEOUT_TICKS;
-            acceptedTick = -1;
-            resynchronizedTick = -1;
         }
 
         private void tickSwapIn() {
@@ -528,14 +559,10 @@ public final class TargetResearchController {
                 return;
             }
             ContainerTransferController.clear();
-            if (!ContainerTransferController.beginSwap(mc, player, discoverySlot, player.inventory.currentItem)) {
+            if (!beginSwapTransfer(discoverySlot, Phase.SWAP_HELD_BACK)) {
                 fail("tcautores.target_use_failed");
                 return;
             }
-            phase = Phase.SWAP_HELD_BACK;
-            deadline = tick + TRANSFER_TIMEOUT_TICKS;
-            acceptedTick = -1;
-            resynchronizedTick = -1;
         }
 
         private void tickSwapBack() {
@@ -567,6 +594,16 @@ public final class TargetResearchController {
             return true;
         }
 
+        private boolean beginSwapTransfer(int slot, Phase nextPhase) {
+            ContainerTransferController.clear();
+            if (!ContainerTransferController.beginSwap(mc, player, slot, player.inventory.currentItem)) return false;
+            phase = nextPhase;
+            deadline = tick + TRANSFER_TIMEOUT_TICKS;
+            acceptedTick = -1;
+            resynchronizedTick = -1;
+            return true;
+        }
+
         private boolean transferAccepted() {
             if (!ContainerTransferController.matchesOpenContainer(player)) {
                 fail("tcautores.batch_container_changed");
@@ -574,7 +611,7 @@ public final class TargetResearchController {
             }
             ContainerTransferController.Status status = ContainerTransferController.status();
             if (status == ContainerTransferController.Status.REJECTED) {
-                if (tick >= deadline) fail("tcautores.batch_transfer_rejected");
+                if (tick >= deadline) scheduleTransferRecovery();
                 return false;
             }
             if (status == ContainerTransferController.Status.RESYNCHRONIZED) {
@@ -585,7 +622,7 @@ public final class TargetResearchController {
                 }
                 if (!ContainerTransferController.hasSettled(tick, resynchronizedTick)) return false;
                 if (!ContainerTransferController.retry(mc, player)) {
-                    fail("tcautores.batch_transfer_rejected");
+                    scheduleTransferRecovery();
                     return false;
                 }
                 acceptedTick = -1;
@@ -605,8 +642,76 @@ public final class TargetResearchController {
                 }
                 return ContainerTransferController.hasSettled(tick, acceptedTick);
             }
-            if (tick >= deadline) fail("tcautores.batch_transfer_timeout");
+            if (tick >= deadline) scheduleTransferRecovery();
             return false;
+        }
+
+        private void scheduleTransferRecovery() {
+            if (phase == Phase.RESTART_WAIT) return;
+            recoveryPhase = phase;
+            ContainerTransferController.clear();
+            ResearchNoteGenerationController.cancel();
+            BatchResearchController.cancel();
+            ResearchSolveController.cancel();
+            acceptedTick = -1;
+            resynchronizedTick = -1;
+            phase = Phase.RESTART_WAIT;
+            deadline = tick + TRANSFER_RESTART_DELAY_TICKS;
+        }
+
+        private void resumeAfterTransferFailure() {
+            Phase failedPhase = recoveryPhase;
+            recoveryPhase = Phase.ADVANCE;
+            switch (failedPhase) {
+                case MOVE_PEN_OUT:
+                    if (helper.scribingToolsStack() == null && ResearchManager.consumeInkFromPlayer(player, false)) {
+                        beginGeneration();
+                    } else if (!beginTransfer(0, Phase.MOVE_PEN_OUT)) {
+                        phase = Phase.ADVANCE;
+                    }
+                    return;
+                case MOVE_PEN_BACK:
+                    if (helper.hasInk()) {
+                        penMoved = false;
+                        ResearchNoteGenerationController.Result result = pendingGenerationResult;
+                        pendingGenerationResult = null;
+                        afterGeneration(result);
+                    } else {
+                        int penSlot = helper.findUsableScribingToolsSlot();
+                        if (penSlot < 0 || !beginTransfer(penSlot, Phase.MOVE_PEN_BACK)) phase = Phase.ADVANCE;
+                    }
+                    return;
+                case MOVE_DISCOVERY_OUT:
+                    if (helper.researchNoteStack() == null) {
+                        int slot = helper.findCompletedResearchNoteSlot(current.key);
+                        if (slot < 2) {
+                            phase = Phase.ADVANCE;
+                        } else {
+                            startSwapIn(slot);
+                        }
+                    } else if (!beginTransfer(1, Phase.MOVE_DISCOVERY_OUT)) {
+                        phase = Phase.ADVANCE;
+                    }
+                    return;
+                case SWAP_DISCOVERY_IN:
+                    if (ResearchNoteItems.isComplete(player.getHeldItem())
+                        && ResearchNoteItems.hasKey(player.getHeldItem(), current.key)) {
+                        useHeldDiscovery();
+                    } else if (discoverySlot < 0 || !beginSwapTransfer(discoverySlot, Phase.SWAP_DISCOVERY_IN)) {
+                        phase = Phase.ADVANCE;
+                    }
+                    return;
+                case SWAP_HELD_BACK:
+                    if (ItemStack.areItemStacksEqual(originalHeld, player.getHeldItem())) {
+                        completeCurrent();
+                    } else if (discoverySlot < 0 || !beginSwapTransfer(discoverySlot, Phase.SWAP_HELD_BACK)) {
+                        phase = Phase.ADVANCE;
+                    }
+                    return;
+                default:
+                    phase = Phase.ADVANCE;
+                    return;
+            }
         }
 
         private void clearTransfer() {
@@ -627,7 +732,18 @@ public final class TargetResearchController {
         }
 
         private void fail(String key) {
+            if (isRecoverableTransferFailure(key)) {
+                scheduleTransferRecovery();
+                return;
+            }
             failReason(StatCollector.translateToLocal(key));
+        }
+
+        private static boolean isRecoverableTransferFailure(String key) {
+            return "tcautores.batch_transfer_failed".equals(key) || "tcautores.batch_transfer_rejected".equals(key)
+                || "tcautores.batch_transfer_timeout".equals(key)
+                || "tcautores.batch_transfer_state_timeout".equals(key)
+                || "tcautores.batch_container_changed".equals(key);
         }
 
         private void failReason(String reason) {

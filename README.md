@@ -8,7 +8,7 @@
 
 从 [Releases](https://github.com/lekiork9z-star/TC4AutoResearch-weighted/releases/latest) 下载正式 jar，将其放入**客户端**的 `mods` 目录后启动游戏。
 
-- 适用于 Minecraft 1.7.10，并需要可用的 Thaumcraft 4 研究台。
+- 适用于 Minecraft 1.7.10，并需要可用的 Thaumcraft 4 研究台，非GTNH环境请使用[UniMixins](https://github.com/LegacyModdingMC/UniMixins)
 - 本模组只在客户端运行，不需要在服务器安装；服务器仍须允许正常的 Thaumcraft 研究台操作。
 - 不要安装 Release 中的 `-dev.jar`。
 

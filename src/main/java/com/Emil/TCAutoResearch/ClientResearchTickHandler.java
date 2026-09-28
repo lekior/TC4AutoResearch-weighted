@@ -10,6 +10,9 @@ import thaumcraft.common.lib.research.ResearchNoteData;
 
 public final class ClientResearchTickHandler {
 
+    /** Poll often enough to react to a server note update without adding a visible half-second pause. */
+    private static final int AUTO_RESEARCH_POLL_TICKS = 2;
+
     private static Watch watch;
 
     public static void watch(EntityPlayer player, Minecraft mc, GuiResearchTableHelperInterface helper) {
@@ -34,7 +37,7 @@ public final class ClientResearchTickHandler {
             || BatchResearchController.isRunning()
             || AspectSynthesisController.isRunning()
             || !Config.autoResearch()) return;
-        if (++current.ticks < 10) return;
+        if (++current.ticks < AUTO_RESEARCH_POLL_TICKS) return;
         current.ticks = 0;
         if (current.mc.currentScreen != current.gui) return;
         ResearchNoteData note = current.gui.note;

@@ -101,6 +101,16 @@ class ContainerTransferControllerTest {
     }
 
     @Test
+    void acceptsInventorySynchronizationWhenConfirmationPacketIsOmitted() {
+        ContainerTransferController.beginTracking(7, (short) 19);
+
+        ContainerTransferController.onSetSlot(7);
+        ContainerTransferController.acknowledgeFromServerState();
+
+        assertEquals(ContainerTransferController.Status.ACCEPTED, ContainerTransferController.status());
+    }
+
+    @Test
     void postTransferStateMustBeStableForTwoTicks() {
         ContainerTransferController.beginTracking(7, (short) 16);
 

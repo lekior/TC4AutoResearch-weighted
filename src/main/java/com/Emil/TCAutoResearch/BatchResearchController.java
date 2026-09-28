@@ -13,7 +13,9 @@ import thaumcraft.common.lib.research.ResearchNoteData;
 public final class BatchResearchController {
 
     private static final int TRANSFER_TIMEOUT_TICKS = 60;
-    private static final int TRANSFER_RESTART_DELAY_TICKS = 20;
+    // A rejected click is already gated by a full WindowItems resync and retry backoff.
+    // Keep only a short client yield before re-reading the live table state.
+    private static final int TRANSFER_RESTART_DELAY_TICKS = 2;
 
     private static BatchState active;
 
@@ -264,6 +266,7 @@ public final class BatchResearchController {
                 fail("tcautores.batch_container_changed");
                 return false;
             }
+            ContainerTransferController.acknowledgeFromServerState();
             ContainerTransferController.Status status = ContainerTransferController.status();
             if (status == ContainerTransferController.Status.REJECTED) {
                 if (tick >= deadline) restartAfterTransferFailure();

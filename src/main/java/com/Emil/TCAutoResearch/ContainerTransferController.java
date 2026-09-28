@@ -139,6 +139,17 @@ public final class ContainerTransferController {
     }
 
     /**
+     * Some compatible servers acknowledge a click with SetSlot/WindowItems and
+     * omit (or delay) ConfirmTransaction. The inventory update is authoritative
+     * for this tracked window, so allow the transfer state machine to proceed.
+     */
+    public static synchronized void acknowledgeFromServerState() {
+        if (status == Status.WAITING && serverUpdateGeneration > transferStartGeneration) {
+            status = Status.ACCEPTED;
+        }
+    }
+
+    /**
      * Requires the observed post-transfer state to remain stable for two client ticks.
      */
     public static synchronized boolean observePostState(boolean ready) {

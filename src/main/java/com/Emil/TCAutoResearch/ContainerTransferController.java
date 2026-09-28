@@ -242,6 +242,6 @@ public final class ContainerTransferController {
     }
 
     private static boolean isTrackedSlotUpdate(int synchronizedWindowId) {
-        return isTrackedWindow(synchronizedWindowId) || synchronizedWindowId == 0;
+        return isTrackedWindow(synchronizedWindowId);
     }
 }

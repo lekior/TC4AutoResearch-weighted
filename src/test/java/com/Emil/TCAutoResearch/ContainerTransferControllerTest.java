@@ -111,6 +111,16 @@ class ContainerTransferControllerTest {
     }
 
     @Test
+    void unrelatedPlayerInventoryUpdateDoesNotConfirmTransfer() {
+        ContainerTransferController.beginTracking(7, (short) 20);
+
+        ContainerTransferController.onSetSlot(0);
+        ContainerTransferController.acknowledgeFromServerState();
+
+        assertEquals(ContainerTransferController.Status.WAITING, ContainerTransferController.status());
+    }
+
+    @Test
     void postTransferStateMustBeStableForTwoTicks() {
         ContainerTransferController.beginTracking(7, (short) 16);
 
